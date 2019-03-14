@@ -13,7 +13,7 @@
 #include "TypeTraits.h"
 
 #define JSONTYPEID(JSONNAME) \
-    \
+                             \
 public:                      \
     static const char* Id() { return (#JSONNAME); }
 
@@ -538,31 +538,26 @@ namespace Core {
 
                 return (*this);
             }
-			NumberType<TYPE, SIGNED, BASETYPE>& operator=(const string& RHS)
-			{
-				Deserialize(RHS);
-
-				return (*this);
-			}
-
-            inline const TYPE Default() const
+            void FromString(const string& RHS)
+            {
+                Deserialize(RHS);
+            }
+            inline TYPE Default() const
             {
                 return _default;
             }
-            inline const TYPE Value() const
+            inline TYPE Value() const
             {
                 return (_set == true ? _value.Value() : _default);
             }
-            inline operator const TYPE() const
+            inline operator TYPE() const
             {
                 return Value();
             }
-			inline operator string () const
-			{
-				string result;
-				Serialize(result);
-				return (result);
-			}
+            inline void ToString(string& result) const
+            {
+                Serialize(result);
+            }
 
             // IElement interface methods
             virtual bool IsSet() const override
@@ -681,12 +676,10 @@ namespace Core {
 
                 return (*this);
             }
-			EnumType<ENUMERATE>& operator=(const string& RHS)
-			{
-				Deserialize(RHS);
-
-				return (*this);
-			}
+            void FromString(const string& RHS)
+            {
+                Deserialize(RHS);
+            }
 
             inline const ENUMERATE Default() const
             {
@@ -700,13 +693,11 @@ namespace Core {
             {
                 return Value();
             }
-			inline operator string () const
-			{
-				string result;
-				Serialize(result);
-				return (result);
-			}
-			const TCHAR* Data() const
+            inline void ToString(string& result) const
+            {
+                Serialize(result);
+            }
+            const TCHAR* Data() const
             {
                 return (_value.Data());
             }
@@ -811,13 +802,10 @@ namespace Core {
 
                 return (*this);
             }
-			Boolean& operator=(const string& RHS)
-			{
-				Deserialize(RHS);
-
-				return (*this);
-			}
-
+            void FromString(const string& RHS)
+            {
+                Deserialize(RHS);
+            }
             inline bool Value() const
             {
                 return (IsSet() ? (_value & ValueBit) != None : (_value & DefaultBit) != None);
@@ -830,12 +818,10 @@ namespace Core {
             {
                 return Value();
             }
-			inline operator string () const
-			{
-				string result;
-				Serialize(result);
-				return (result);
-			}
+            inline void ToString(string& result) const
+            {
+                Serialize(result);
+            }
 
             // IElement interface methods
             virtual bool IsSet() const override
@@ -945,6 +931,11 @@ namespace Core {
             {
             }
 
+            void FromString(const string& RHS)
+            {
+                _value = RHS;
+                _scopeCount |= SetBit;
+            }
             String& operator=(const string& RHS)
             {
                 Core::ToString(RHS.c_str(), _value);
@@ -1032,9 +1023,13 @@ namespace Core {
             {
                 return (_default);
             }
-            inline operator const string() const
+            inline void ToString(string& result) const
             {
-                return (((_scopeCount & SetBit) != 0) ? Core::ToString(_value.c_str()) : _default);
+                result = (((_scopeCount & SetBit) != 0) ? _value : _default);
+
+                if (UseQuotes() == true) {
+                    result = '"' + result + '"';
+                }
             }
 
             // IElement interface methods
@@ -1044,7 +1039,7 @@ namespace Core {
             }
             virtual void Clear() override
             {
-                _scopeCount &= QuotedSerializeBit;
+                _scopeCount = (_scopeCount & QuotedSerializeBit);
             }
 
         private:
@@ -1133,7 +1128,7 @@ namespace Core {
 
             virtual uint16_t Deserialize(const char stream[], const uint16_t maxLength, uint16_t& offset) override
             {
-				bool noScoping = true;
+                bool noScoping = true;
                 bool finished = false;
                 uint16_t result = 0;
                 ASSERT(maxLength > 0);
@@ -1154,15 +1149,15 @@ namespace Core {
                 while ((result < maxLength) && (finished == false)) {
                     if (escapedSequence == false) {
                         if (EnterScope(stream[result])) {
-							noScoping = false;
+                            noScoping = false;
                             _scopeCount++;
                         } else if ((_scopeCount > 0) && (ExitScope(stream[result]) || EndOfQuotedString(stream[result]))) {
-							_scopeCount--;
-						}
-						finished = (((_scopeCount & ScopeMask) == 0) && ((stream[result] == '\"') || (stream[result] == '}') || (stream[result] == ']') || (stream[result] == ',') || (stream[result] == ' ') || (stream[result] == '\t')));
-					}
+                            _scopeCount--;
+                        }
+                        finished = (((_scopeCount & ScopeMask) == 0) && ((stream[result] == '\"') || (stream[result] == '}') || (stream[result] == ']') || (stream[result] == ',') || (stream[result] == ' ') || (stream[result] == '\t')));
+                    }
 
-                    if ((finished == false) || ((noScoping == false) &&  ExitScope(stream[result]))) {
+                    if ((finished == false) || ((noScoping == false) && ExitScope(stream[result]))) {
                         escapedSequence = (stream[result] == '\\');
                         // Write the amount we possibly can..
                         _value += stream[result];
@@ -1177,7 +1172,7 @@ namespace Core {
                     finished = true;
 
                 if (finished == false) {
-                    offset =static_cast<uint16_t>( _value.length() + (((_scopeCount & ScopeMask) != 0) ? 1 : 0));
+                    offset = static_cast<uint16_t>(_value.length() + (((_scopeCount & ScopeMask) != 0) ? 1 : 0));
                 } else {
                     offset = 0;
                     _scopeCount |= (ContainsNull(_value) ? None : SetBit);
@@ -1324,18 +1319,6 @@ namespace Core {
                     index++;
                 }
             }
-			inline operator string () const
-			{
-				string result;
-				this->ToString(result);
-				return (result);
-			}
-			inline Container& operator= (const string& RHS)
-			{
-				this->FromString(RHS);
-				return (*this);
-			}
-
 
         private:
             // IElement interface methods (private)
@@ -1549,9 +1532,10 @@ namespace Core {
 
                     return (*_iterator);
                 }
-				inline uint32_t Count() const {
-					return (_container == nullptr ? 0 : _container->size());
-				}
+                inline uint32_t Count() const
+                {
+                    return (_container == nullptr ? 0 : _container->size());
+                }
 
             private:
                 const ArrayContainer* _container;
@@ -1655,9 +1639,10 @@ namespace Core {
 
                     return (*_iterator);
                 }
-				inline uint32_t Count() const {
-					return (_container == nullptr ? 0 : _container->size());
-				}
+                inline uint32_t Count() const
+                {
+                    return (_container == nullptr ? 0 : _container->size());
+                }
 
             private:
                 ArrayContainer* _container;
@@ -1667,7 +1652,6 @@ namespace Core {
 
             typedef IteratorType<ELEMENT> Iterator;
             typedef ConstIteratorType<ELEMENT> ConstIterator;
-
 
         public:
             ArrayType()
@@ -1694,24 +1678,25 @@ namespace Core {
                 _data.clear();
             }
 
-            ArrayType<ELEMENT>& operator=(const ArrayType<ELEMENT>& RHS) {
+            ArrayType<ELEMENT>& operator=(const ArrayType<ELEMENT>& RHS)
+            {
 
                 _data = RHS._data;
                 _iterator = IteratorType<ELEMENT>(_data);
 
                 return (*this);
             }
-			inline operator string () const
-			{
-				string result;
-				ToString(result);
-				return (result);
-			}
-			inline ArrayType<ELEMENT>& operator= (const string& RHS)
-			{
-				FromString(RHS);
-				return (*this);
-			}
+            inline operator string() const
+            {
+                string result;
+                ToString(result);
+                return (result);
+            }
+            inline ArrayType<ELEMENT>& operator=(const string& RHS)
+            {
+                FromString(RHS);
+                return (*this);
+            }
 
         private:
             // IElement interface methods (private)
@@ -1778,13 +1763,13 @@ namespace Core {
 
                 return (_data.back());
             }
-			inline ELEMENT& Add(const ELEMENT& element)
-			{
-				_data.push_back(element);
+            inline ELEMENT& Add(const ELEMENT& element)
+            {
+                _data.push_back(element);
 
-				return (_data.back());
-			}
-			inline Iterator Elements()
+                return (_data.back());
+            }
+            inline Iterator Elements()
             {
                 return (Iterator(_data));
             }
@@ -1904,7 +1889,7 @@ namespace Core {
                     _element = element;
                 }
 
-                virtual Core::JSON::IElement *Element(const string &identifier VARIABLE_IS_NOT_USED)
+                virtual Core::JSON::IElement* Element(const string& identifier VARIABLE_IS_NOT_USED)
                 {
                     return (_element);
                 }
@@ -1958,9 +1943,9 @@ namespace Core {
 
                     fillCount += size;
 
-    #ifdef __DEBUG__
+#ifdef __DEBUG__
                     uint16_t handled =
-    #endif // __DEBUG__
+#endif // __DEBUG__
 
                         _deserializer.Deserialize(_buffer, size);
 

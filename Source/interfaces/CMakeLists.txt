@@ -1,10 +1,27 @@
 set(TargetMarshalling ${NAMESPACE}Marshallings)
 set(TargetInterfaces ${NAMESPACE}Interfaces)
+string(TOLOWER ${NAMESPACE} NAMESPACE_LIB)
 
 add_library(${TargetMarshalling} SHARED
         ProxyStubs.cpp
+        ProxyStubs_AVNClient.cpp
+        ProxyStubs_Browser.cpp
+        ProxyStubs_Composition.cpp
+        ProxyStubs_ContentDecryption.cpp
+        ProxyStubs_DsgccClient.cpp
+        ProxyStubs_Guide.cpp
+        ProxyStubs_Netflix.cpp
         ProxyStubs_Packager.cpp
+        ProxyStubs_PlayGiga.cpp
+        ProxyStubs_Provisioning.cpp
+        ProxyStubs_RPCLink.cpp
+        ProxyStubs_RtspClient.cpp
+        ProxyStubs_Streaming.cpp
         ProxyStubs_TestController.cpp
+        ProxyStubs_TVControl.cpp
+        ProxyStubs_WebDriver.cpp
+        ProxyStubs_WebServer.cpp
+        ProxyStubs_TestUtility.cpp
         )
 
 add_library(${TargetInterfaces} SHARED
@@ -45,6 +62,7 @@ set(PUBLIC_HEADERS
         IWebDriver.h
         IWebServer.h
         ITestController.h
+        ITestUtility.h
         Module.h
         )
 
@@ -109,7 +127,7 @@ install(
 
 install(
         TARGETS ${TargetMarshalling} EXPORT ${TargetMarshalling}Targets  # for downstream dependencies
-        LIBRARY DESTINATION lib/wpeframework/proxystubs COMPONENT libs      # shared lib
+        LIBRARY DESTINATION lib/${NAMESPACE_LIB}/proxystubs COMPONENT libs      # shared lib
 )
 
 InstallPackageConfig(
