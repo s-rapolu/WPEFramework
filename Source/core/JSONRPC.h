@@ -233,9 +233,21 @@ namespace Core {
                 InvokeFunction implementation = [actualMethod](const string& parameters, string& result) -> uint32_t {
                     INBOUND inbound;
                     OUTBOUND outbound;
-                    inbound = parameters;
+                    inbound.FromString(parameters);
                     uint32_t code = actualMethod(inbound, outbound);
-                    result = outbound;
+                    OutboundToString(outbound, result);
+                    return (code);
+                };
+                Register(methodName, implementation);
+            }
+            template <typename OUTBOUND, typename METHOD>
+            void Register(const string& methodName, const METHOD& method)
+            {
+                std::function<uint32_t(OUTBOUND&)> actualMethod = method;
+                InvokeFunction implementation = [actualMethod](const string& /*parameters*/, string& result) -> uint32_t {
+                    OUTBOUND outbound;
+                    uint32_t code = actualMethod(outbound);
+                    OutboundToString(outbound, result);
                     return (code);
                 };
                 Register(methodName, implementation);
@@ -249,7 +261,19 @@ namespace Core {
                     OUTBOUND outbound;
                     inbound.FromString(parameters);
                     uint32_t code = actualMethod(inbound, outbound);
-                    outbound.ToString(result);
+                    OutboundToString(outbound, result);
+                    return (code);
+                };
+                Register(methodName, implementation);
+            }
+            template <typename OUTBOUND, typename METHOD, typename REALOBJECT>
+            void Register(const string& methodName, const METHOD& method, REALOBJECT* objectPtr)
+            {
+                std::function<uint32_t(OUTBOUND&)> actualMethod = std::bind(method, objectPtr, std::placeholders::_1);
+                InvokeFunction implementation = [actualMethod](const string& /*parameters*/, string& result) -> uint32_t {
+                    OUTBOUND outbound;
+                    uint32_t code = actualMethod(outbound);
+                    OutboundToString(outbound, result);
                     return (code);
                 };
                 Register(methodName, implementation);
@@ -297,6 +321,17 @@ namespace Core {
             bool HasVersionSupport(const string& number) const
             {
                 return (number.length() > 0) && (std::all_of(number.begin(), number.end(), [](TCHAR c) { return std::isdigit(c); })) && (std::find(_versions.begin(), _versions.end(), static_cast<uint8_t>(atoi(number.c_str()))) != _versions.end());
+            }
+
+            static void OutboundToString(const string& outbound, string& result)
+            {
+                result = outbound;
+            }
+
+            template <typename OUTBOUND>
+            static void OutboundToString(const OUTBOUND& outbound, string& result)
+            {
+                outbound.ToString(result);
             }
 
         private:
