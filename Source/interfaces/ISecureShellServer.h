@@ -22,7 +22,7 @@ namespace Exchange {
 
 		virtual ~IIterator() {}
 
-                virtual uint32_t Count() const = 0;
+                virtual uint32_t Count() = 0;
                 virtual void Reset() = 0;
                 virtual bool IsValid() const = 0;
                 virtual bool Next() = 0;
