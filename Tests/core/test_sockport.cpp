@@ -17,8 +17,9 @@ namespace WPEFramework {
       const string localhost = "127.0.0.1";
       const uint16_t portNumber = 7099;
       const uint16_t bufferSize = 1024;
-      const string mcastAddress = "239.4.4.4";
-      const uint16_t mcastPort = 8888;
+      const string mcastAddress = "239.139.40.40";
+      const uint16_t mcastPort = 9873;
+      const uint8_t timeToLive = 4;
     } // SockTest
 
     class UDPServer : public Core::StreamType<Core::SocketDatagram> {
@@ -31,7 +32,7 @@ namespace WPEFramework {
 
      public:
         UDPServer(const WPEFramework::Core::NodeId& localNode, const WPEFramework::Core::NodeId& remoteNode)
-          : BaseClass(false, localNode.AnyInterface(), remoteNode, SockTest::bufferSize, SockTest::bufferSize)
+          : BaseClass(false, localNode, remoteNode, SockTest::bufferSize, SockTest::bufferSize)
           , _dataPending(false, false)
         {
         }
@@ -51,17 +52,16 @@ namespace WPEFramework {
         void SendSubmit(const string& text)
         {
           _dataReceived = text;
-          Trigger();
+          Core::SocketDatagram::Trigger();
         }
         virtual uint16_t SendData(uint8_t* dataFrame, const uint16_t maxSendSize)
         {
           uint16_t result = 0;
-          if (BaseClass::LocalNode().IsMulticast() == true) {
+          //if (BaseClass::LocalNode().IsMulticast() == true) {
             result = (_dataReceived.length() > maxSendSize ? maxSendSize : _dataReceived.length());
-            ::memcpy(dataFrame, _dataReceived.c_str(), result);
-            //_dataReceived.clear();
-            _dataPending.Unlock();
-          }
+            ::memcpy(dataFrame, _dataReceived.c_str(), result+1);
+            _dataReceived.clear();
+          //}
 
           return result;
         }
@@ -89,7 +89,7 @@ namespace WPEFramework {
 
      public:
         UDPClient(const WPEFramework::Core::NodeId& localNode, const WPEFramework::Core::NodeId& remoteNode)
-          : BaseClass(false, localNode.AnyInterface(), remoteNode, SockTest::bufferSize, SockTest::bufferSize)
+          : BaseClass(false, localNode, remoteNode, SockTest::bufferSize, SockTest::bufferSize)
           , _dataPending(false, false)
         {
         }
@@ -99,7 +99,6 @@ namespace WPEFramework {
 
         int Wait()
         {
-          //Trigger();
           return _dataPending.Lock();
         }
         void Retrieve(string& text)
@@ -110,24 +109,23 @@ namespace WPEFramework {
         void SendSubmit(const string& text)
         {
           _dataReceived = text;
-          Trigger();
+	  Core::SocketDatagram::Trigger();
         }
         virtual uint16_t SendData(uint8_t* dataFrame, const uint16_t maxSendSize)
         {
           uint16_t result = (_dataReceived.length() > maxSendSize ? maxSendSize : _dataReceived.length());
-          ::memcpy(dataFrame, _dataReceived.c_str(), result);
+          ::memcpy(dataFrame, _dataReceived.c_str(), result+1);
           _dataReceived.clear();
-          _dataPending.Unlock();
           return result;
         }
         virtual uint16_t ReceiveData(uint8_t* dataFrame, const uint16_t receivedSize)
         {
           uint16_t result = 0;
-          if (BaseClass::RemoteNode().IsMulticast() == true) {
+          //if (BaseClass::RemoteNode().IsMulticast() == true) {
             _dataReceived = reinterpret_cast<char*>(dataFrame);
             result = (_dataReceived.length() > receivedSize ? receivedSize : _dataReceived.length());
             _dataPending.Unlock();
-          }
+          //}
           return result;
         }
 
@@ -202,34 +200,47 @@ namespace WPEFramework {
         mutable WPEFramework::Core::Event _dataPending;
     };
 
-   TEST(DISABLED_Core_SocketPort, test_SockDatagramUnicast)
+   TEST(Core_SocketPort, test_SockDatagramUnicast)
    {
       IPTestAdministrator::OtherSideMain otherSide = [](IPTestAdministrator& testAdmin) {
         UDPServer udpSocketServerUnicast(Core::NodeId(_T(SockTest::localhost.c_str()), SockTest::portNumber, Core::NodeId::TYPE_IPV4), Core::NodeId());
         udpSocketServerUnicast.Open(Core::infinite);
-        testAdmin.Sync("setup server");
+        testAdmin.Sync("setup server done");
         testAdmin.Sync("server open");
         udpSocketServerUnicast.Wait();
+
         string messageReceived;
         //Receive message from Server side
         udpSocketServerUnicast.Retrieve(messageReceived);
 	//TODO-2: Test with different send and receive buffer sizes.
         EXPECT_STREQ(SockTest::message.c_str(), messageReceived.c_str());
+
+        if (udpSocketServerUnicast.TTL(SockTest::timeToLive) == Core::ERROR_NONE)
+          EXPECT_TRUE(SockTest::timeToLive == udpSocketServerUnicast.TTL());
+        else
+          fprintf(stderr,"SERVER PID=%d File: %s Function: %s Line: %d\n", getpid(), __FILE__, __FUNCTION__, __LINE__);
+
+        udpSocketServerUnicast.RemoteNode(udpSocketServerUnicast.ReceivedNode());
+        udpSocketServerUnicast.SendSubmit(SockTest::message);
         testAdmin.Sync("close socket");
         udpSocketServerUnicast.Close(Core::infinite);
         testAdmin.Sync("client done");
      };
 
      IPTestAdministrator testAdmin(otherSide);
-     testAdmin.Sync("setup server");
+     testAdmin.Sync("setup server done");
 
      {
-        UDPClient udpSocketClientUnicast(Core::NodeId(_T(SockTest::localhost.c_str()), (SockTest::portNumber-1), Core::NodeId::TYPE_IPV4),
+        UDPClient udpSocketClientUnicast(Core::NodeId(_T("0.0.0.0:0"), Core::NodeId::TYPE_IPV4),
                                         Core::NodeId(_T(SockTest::localhost.c_str()), SockTest::portNumber, Core::NodeId::TYPE_IPV4));
         udpSocketClientUnicast.Open(Core::infinite);
         testAdmin.Sync("server open");
         udpSocketClientUnicast.SendSubmit(SockTest::message);
         udpSocketClientUnicast.Wait();
+
+        string messageReceived;
+        udpSocketClientUnicast.Retrieve(messageReceived);
+        EXPECT_STREQ(SockTest::message.c_str(), messageReceived.c_str());
         testAdmin.Sync("close socket");
         udpSocketClientUnicast.Close(Core::infinite);
         testAdmin.Sync("client done");
@@ -241,38 +252,37 @@ namespace WPEFramework {
    TEST(Core_SocketPort, test_SockDatagramMulticast)
    {
       IPTestAdministrator::OtherSideMain otherSide = [](IPTestAdministrator& testAdmin) {
-        UDPServer udpSocketServerMulticast(Core::NodeId(_T("0.0.0.0"), 8989, Core::NodeId::TYPE_IPV4),
-                        Core::NodeId(_T(SockTest::mcastAddress.c_str()), SockTest::mcastPort, Core::NodeId::TYPE_IPV4));
+        UDPServer udpSocketServerMulticast(Core::NodeId(_T("0.0.0.0"), Core::NodeId::TYPE_IPV4),
+		Core::NodeId(_T(SockTest::mcastAddress.c_str()), SockTest::mcastPort, Core::NodeId::TYPE_IPV4));
         udpSocketServerMulticast.Open(Core::infinite);
-        testAdmin.Sync("setup server");
+        testAdmin.Sync("setup server done");
         testAdmin.Sync("server open");
         udpSocketServerMulticast.SendSubmit(SockTest::message);
-        udpSocketServerMulticast.Wait();
         testAdmin.Sync("close socket");
         udpSocketServerMulticast.Close(Core::infinite);
         testAdmin.Sync("client done");
       };
 
       IPTestAdministrator testAdmin(otherSide);
-      testAdmin.Sync("setup server");
+      testAdmin.Sync("setup server done");
 
       {
-        UDPClient udpSocketClientMulticast(Core::NodeId(_T(SockTest::mcastAddress.c_str()), SockTest::mcastPort, Core::NodeId::TYPE_IPV4),
-                                        Core::NodeId());
+        UDPClient udpSocketClientMulticast(Core::NodeId(_T("0.0.0.0"), SockTest::mcastPort, Core::NodeId::TYPE_IPV4),
+			Core::NodeId(_T("0.0.0.0"), Core::NodeId::TYPE_IPV4));
         udpSocketClientMulticast.Open(Core::infinite);
-	// TODO-1: Later join with specific ethernet interface or source
+	// TODO-1: Join with specific ethernet interface or source
 	// TODO-3: Test the problem of binding to a port already in use
 	// TODO-4: Test the timeouts on the sockets
 	// TODO-5: Test the scenario of closing down server socket when client is half way through send/recv.
 	// TODO-6: Test the blocking and non-blocking mode of socket operations
-        udpSocketClientMulticast.Join(Core::NodeId(_T(SockTest::mcastAddress.c_str()))); 
+        udpSocketClientMulticast.Join(Core::NodeId(_T(SockTest::mcastAddress.c_str())));
         testAdmin.Sync("server open");
         udpSocketClientMulticast.Wait();
         string messageReceived;
         udpSocketClientMulticast.Retrieve(messageReceived);
         EXPECT_STREQ(SockTest::message.c_str(), messageReceived.c_str());
-        testAdmin.Sync("close socket");
         udpSocketClientMulticast.Leave(Core::NodeId(_T(SockTest::mcastAddress.c_str())));
+        testAdmin.Sync("close socket");
         udpSocketClientMulticast.Close(Core::infinite);
         testAdmin.Sync("client done");
       }
@@ -280,7 +290,7 @@ namespace WPEFramework {
       Core::Singleton::Dispose();
     }
 
-    TEST(DISABLED_Core_SocketPort, test_SockStream)
+    TEST(Core_SocketPort, test_SockStream)
     {
       IPTestAdministrator::OtherSideMain otherSide = [](IPTestAdministrator& testAdmin) {
         Core::SocketServerType<StreamTextConnector> textSocketServer(Core::NodeId(StreamSockTest::g_connector));
@@ -311,5 +321,6 @@ namespace WPEFramework {
 
       Core::Singleton::Dispose();
     }
+
   } // Tests
 } // WPEFramework
